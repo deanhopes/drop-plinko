@@ -3,9 +3,9 @@ import PlinkoGame from "../components/PlinkoGame";
 
 function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-gray-900">
+    <div className="min-h-screen bg-gray-900 flex flex-col">
       <Nav />
-      <main className="flex-grow flex items-center justify-center p-4">
+      <main className="flex-grow flex items-center justify-center p-4 mt-16">
         <PlinkoGame />
       </main>
     </div>

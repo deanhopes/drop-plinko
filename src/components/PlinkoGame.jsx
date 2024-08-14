@@ -1,37 +1,43 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Matter from "matter-js";
 
 const PlinkoGame = () => {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);
+  const renderRef = useRef(null);
   const [score, setScore] = useState(0);
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
-    const Engine = Matter.Engine;
-    const Render = Matter.Render;
-    const World = Matter.World;
-    const Bodies = Matter.Bodies;
-    const Events = Matter.Events;
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
+    console.log("Effect running, canvasRef:", canvasRef.current);
+    const canvas = canvasRef.current;
+    const { Engine, Render, World, Bodies, Events, Runner } = Matter;
+
+    console.log("Matter loaded:", Matter);
 
     engineRef.current = Engine.create();
     const world = engineRef.current.world;
 
-    const render = Render.create({
-      canvas: canvasRef.current,
+    renderRef.current = Render.create({
+      canvas: canvas,
       engine: engineRef.current,
       options: {
-        width: 800,
-        height: 600,
+        width: 1200,
+        height: 1200,
         wireframes: false,
         background: "#1a1a1a",
       },
     });
 
+    console.log("Render created:", renderRef.current);
+
     const pegRadius = 5;
-    const tokenRadius = 10;
-    const cols = 13;
-    const rows = 10;
-    const spacing = render.options.width / cols;
+    const cols = 7;
+    const rows = 15;
+    const spacing = renderRef.current.options.width / cols;
 
     // Create pegs
     for (let i = 0; i < cols + 1; i++) {
@@ -42,6 +48,8 @@ const PlinkoGame = () => {
           const peg = Bodies.circle(x, y, pegRadius, {
             isStatic: true,
             render: { fillStyle: "#e0e0e0" },
+            restitution: 0.5,
+            friction: 0.1,
           });
           World.add(world, peg);
         }
@@ -51,20 +59,20 @@ const PlinkoGame = () => {
     // Create walls and floor
     const wallOptions = { isStatic: true, render: { fillStyle: "#404040" } };
     World.add(world, [
-      Bodies.rectangle(400, 0, 800, 50, wallOptions),
-      Bodies.rectangle(400, 600, 800, 50, wallOptions),
-      Bodies.rectangle(0, 300, 50, 600, wallOptions),
-      Bodies.rectangle(800, 300, 50, 600, wallOptions),
+      Bodies.rectangle(600, 0, 1200, 20, wallOptions), // Top
+      Bodies.rectangle(600, 1200, 1200, 20, wallOptions), // Bottom
+      Bodies.rectangle(0, 600, 20, 1200, wallOptions), // Left
+      Bodies.rectangle(1200, 600, 20, 1200, wallOptions), // Right
     ]);
 
     // Create score zones
     const scoreZones = [];
-    for (let i = 0; i < cols - 1; i++) {
+    for (let i = 0; i < cols; i++) {
       const zone = Bodies.rectangle(
-        (i + 1) * spacing,
-        render.options.height - 25,
+        (i + 0.5) * spacing,
+        renderRef.current.options.height - 10,
         spacing,
-        50,
+        20,
         {
           isStatic: true,
           isSensor: true,
@@ -84,32 +92,44 @@ const PlinkoGame = () => {
 
         if (scoreZones.includes(bodyA) && !bodyB.isStatic) {
           setScore((prevScore) => prevScore + 1);
-          World.remove(world, bodyB);
+          setTimeout(() => World.remove(world, bodyB), 1000);
         } else if (scoreZones.includes(bodyB) && !bodyA.isStatic) {
           setScore((prevScore) => prevScore + 1);
-          World.remove(world, bodyA);
+          setTimeout(() => World.remove(world, bodyA), 1000);
         }
       });
     });
 
-    Engine.run(engineRef.current);
-    Render.run(render);
+    Runner.run(engineRef.current);
+    Render.run(renderRef.current);
+
+    console.log("Game setup complete");
+    console.log("Canvas in DOM:", document.body.contains(canvas));
+
+    const checkCanvasInterval = setInterval(() => {
+      console.log("Canvas still in DOM:", document.body.contains(canvas));
+    }, 1000);
 
     return () => {
-      Render.stop(render);
-      World.clear(world);
-      Engine.clear(engineRef.current);
-      render.canvas.remove();
-      render.canvas = null;
-      render.context = null;
-      render.textures = {};
+      console.log("Cleanup function called");
+      clearInterval(checkCanvasInterval);
+      if (renderRef.current) {
+        Render.stop(renderRef.current);
+        World.clear(world);
+        Engine.clear(engineRef.current);
+        renderRef.current.canvas.remove();
+        renderRef.current.canvas = null;
+        renderRef.current.context = null;
+        renderRef.current.textures = {};
+      }
     };
   }, []);
 
   const handleClick = () => {
     if (engineRef.current) {
       const world = engineRef.current.world;
-      const token = Matter.Bodies.circle(400, 50, 10, {
+      const dropX = Math.random() * 1180 + 10; // Random x position between 10 and 1190
+      const token = Matter.Bodies.circle(dropX, 30, 10, {
         restitution: 0.5,
         friction: 0.1,
         render: { fillStyle: "#e74c3c" },
@@ -118,20 +138,32 @@ const PlinkoGame = () => {
     }
   };
 
+  
+
   return (
-    <div className="flex flex-col items-center">
-      <div className="mb-4">
-        <button
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
-          onClick={handleClick}
-        >
-          Drop Token
-        </button>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 p-4">
+      <button
+        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded mb-4"
+        onClick={handleClick}
+      >
+        Drop Token
+      </button>
+      <div className="border-4 border-gray-800 rounded-lg overflow-hidden w-full h-[600px] max-w-screen-lg z-50 relative">
+        <canvas
+          ref={canvasRef}
+          width={1200}
+          height={1200}
+          className="w-full h-auto max-w-full max-h-full"
+          style={{
+            border: "2px solid red",
+            maxWidth: "100vw",
+            maxHeight: "100vh",
+            display: "block !important",
+            visibility: "visible !important"
+          }}
+        />
       </div>
-      <div className="border-4 border-gray-800 rounded-lg overflow-hidden">
-        <canvas ref={canvasRef} />
-      </div>
-      <div className="mt-4 text-2xl font-bold">Score: {score}</div>
+      <div className="mt-4 text-2xl font-bold text-white">Score: {score}</div>
     </div>
   );
 };

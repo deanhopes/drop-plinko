@@ -1,125 +1,138 @@
-import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useEffect, useRef, useState } from "react";
 import Matter from "matter-js";
 
 const PlinkoGame = () => {
   const canvasRef = useRef(null);
-  const [p5, setP5] = useState(null);
-  const [world, setWorld] = useState(null);
-  const [pegs, setPegs] = useState([]);
-  const [tokens, setTokens] = useState([]);
-
-  const WIDTH = 400;
-  const HEIGHT = 600;
-  const COLS = 13;
-  const ROWS = 8;
-  const PEG_RADIUS = 5;
-  const TOKEN_RADIUS = 10;
+  const engineRef = useRef(null);
+  const [score, setScore] = useState(0);
 
   useEffect(() => {
-    import("p5").then((p5Module) => {
-      const p5 = new p5Module.default((p) => {
-        p.setup = () => {
-          const canvas = p.createCanvas(WIDTH, HEIGHT);
-          canvas.parent(canvasRef.current);
+    const Engine = Matter.Engine;
+    const Render = Matter.Render;
+    const World = Matter.World;
+    const Bodies = Matter.Bodies;
+    const Events = Matter.Events;
 
-          const engine = Matter.Engine.create();
-          const world = engine.world;
+    engineRef.current = Engine.create();
+    const world = engineRef.current.world;
 
-          setP5(p);
-          setWorld(world);
+    const render = Render.create({
+      canvas: canvasRef.current,
+      engine: engineRef.current,
+      options: {
+        width: 800,
+        height: 600,
+        wireframes: false,
+        background: "#1a1a1a",
+      },
+    });
 
-          // Create pegs
-          const newPegs = [];
-          for (let i = 0; i < COLS; i++) {
-            for (let j = 0; j < ROWS; j++) {
-              const x = i * (WIDTH / (COLS - 1));
-              const y = j * (HEIGHT / (ROWS + 1)) + 100;
-              const peg = Matter.Bodies.circle(x, y, PEG_RADIUS, {
-                isStatic: true,
-              });
-              Matter.World.add(world, peg);
-              newPegs.push(peg);
-            }
-          }
-          setPegs(newPegs);
+    const pegRadius = 5;
+    const tokenRadius = 10;
+    const cols = 13;
+    const rows = 10;
+    const spacing = render.options.width / cols;
 
-          // Create walls and bottom
-          const walls = [
-            Matter.Bodies.rectangle(0, HEIGHT / 2, 10, HEIGHT, {
-              isStatic: true,
-            }),
-            Matter.Bodies.rectangle(WIDTH, HEIGHT / 2, 10, HEIGHT, {
-              isStatic: true,
-            }),
-            Matter.Bodies.rectangle(WIDTH / 2, HEIGHT, WIDTH, 10, {
-              isStatic: true,
-            }),
-          ];
-          Matter.World.add(world, walls);
-
-          Matter.Runner.run(engine);
-        };
-
-        p.draw = () => {
-          p.background(220);
-
-          // Draw pegs
-          p.fill(150);
-          pegs.forEach((peg) => {
-            p.circle(peg.position.x, peg.position.y, PEG_RADIUS * 2);
+    // Create pegs
+    for (let i = 0; i < cols + 1; i++) {
+      for (let j = 0; j < rows; j++) {
+        if (i === 0 || i === cols || j % 2 === 0) {
+          const x = i * spacing;
+          const y = spacing + j * spacing;
+          const peg = Bodies.circle(x, y, pegRadius, {
+            isStatic: true,
+            render: { fillStyle: "#e0e0e0" },
           });
+          World.add(world, peg);
+        }
+      }
+    }
 
-          // Draw tokens
-          p.fill(255, 0, 0);
-          tokens.forEach((token) => {
-            p.circle(token.position.x, token.position.y, TOKEN_RADIUS * 2);
-          });
+    // Create walls and floor
+    const wallOptions = { isStatic: true, render: { fillStyle: "#404040" } };
+    World.add(world, [
+      Bodies.rectangle(400, 0, 800, 50, wallOptions),
+      Bodies.rectangle(400, 600, 800, 50, wallOptions),
+      Bodies.rectangle(0, 300, 50, 600, wallOptions),
+      Bodies.rectangle(800, 300, 50, 600, wallOptions),
+    ]);
 
-          // Draw drop zones
-          p.fill(0);
-          for (let i = 0; i < COLS; i++) {
-            const x = i * (WIDTH / (COLS - 1));
-            p.rect(x - 15, 0, 30, 50);
-          }
+    // Create score zones
+    const scoreZones = [];
+    for (let i = 0; i < cols - 1; i++) {
+      const zone = Bodies.rectangle(
+        (i + 1) * spacing,
+        render.options.height - 25,
+        spacing,
+        50,
+        {
+          isStatic: true,
+          isSensor: true,
+          render: { fillStyle: "#2c3e50" },
+        }
+      );
+      scoreZones.push(zone);
+      World.add(world, zone);
+    }
 
-          // Draw collection zones
-          for (let i = 0; i < COLS - 1; i++) {
-            const x = i * (WIDTH / (COLS - 1)) + WIDTH / (COLS - 1) / 2;
-            p.rect(x - 15, HEIGHT - 50, 30, 50);
-          }
-        };
+    // Handle collisions for scoring
+    Events.on(engineRef.current, "collisionStart", (event) => {
+      const pairs = event.pairs;
+      pairs.forEach((pair) => {
+        const bodyA = pair.bodyA;
+        const bodyB = pair.bodyB;
 
-        p.mousePressed = () => {
-          if (p.mouseY < 50 && world) {
-            const token = Matter.Bodies.circle(p.mouseX, 50, TOKEN_RADIUS, {
-              restitution: 0.5,
-              friction: 0.1,
-            });
-            Matter.World.add(world, token);
-            setTokens((prevTokens) => [...prevTokens, token]);
-          }
-        };
+        if (scoreZones.includes(bodyA) && !bodyB.isStatic) {
+          setScore((prevScore) => prevScore + 1);
+          World.remove(world, bodyB);
+        } else if (scoreZones.includes(bodyB) && !bodyA.isStatic) {
+          setScore((prevScore) => prevScore + 1);
+          World.remove(world, bodyA);
+        }
       });
     });
 
+    Engine.run(engineRef.current);
+    Render.run(render);
+
     return () => {
-      // Cleanup
-      if (p5) {
-        p5.remove();
-      }
+      Render.stop(render);
+      World.clear(world);
+      Engine.clear(engineRef.current);
+      render.canvas.remove();
+      render.canvas = null;
+      render.context = null;
+      render.textures = {};
     };
   }, []);
 
+  const handleClick = () => {
+    if (engineRef.current) {
+      const world = engineRef.current.world;
+      const token = Matter.Bodies.circle(400, 50, 10, {
+        restitution: 0.5,
+        friction: 0.1,
+        render: { fillStyle: "#e74c3c" },
+      });
+      Matter.World.add(world, token);
+    }
+  };
+
   return (
-    <motion.div
-      className="border-4 border-gray-800 rounded-lg overflow-hidden"
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.5 }}
-    >
-      <div ref={canvasRef} />
-    </motion.div>
+    <div className="flex flex-col items-center">
+      <div className="mb-4">
+        <button
+          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+          onClick={handleClick}
+        >
+          Drop Token
+        </button>
+      </div>
+      <div className="border-4 border-gray-800 rounded-lg overflow-hidden">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="mt-4 text-2xl font-bold">Score: {score}</div>
+    </div>
   );
 };
 
